@@ -1,0 +1,276 @@
+openapi: '3.0.3'
+
+info:
+  title: Products API
+  description: A basic demo API
+  version: '1.0'
+
+  contact:
+    name: Paul Scherer
+    email: p.scherer@posteo.de
+
+servers:
+  - url: http://localhost:3000/v1
+    description: Dev Server
+  - url: http://localhost:4010
+    description: Mock Server
+
+components:
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema:
+        $ref: '#/components/schemas/PageNumber'
+      description: Page number
+
+    PageSize:
+      in: query
+      name: pageSize
+      schema:
+        $ref: '#/components/schemas/PageSize'
+      description: Number of resources per page
+
+    ResourceId:
+      in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+      description: A resource identifier
+
+  requestBodies:
+    UpsertProduct:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Product'
+        application/x-www-form-urlencoded:
+          schema:
+            $ref: '#/components/schemas/Product'
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 400
+            message: Request body malformed
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 404
+            message: Resource not found
+
+    Unauthorized:
+      description: Access token is invalid or missing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 401
+            message: Invalid access token
+
+    Unexpected:
+      description: Unexpected error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 500
+            message: Unexpected error
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: number
+        message:
+          type: string
+      required:
+        - code
+        - message
+
+    PageNumber:
+      type: integer
+      default: 1
+      minimum: 1
+
+    PageSize:
+      type: integer
+      default: 20
+      minimum: 5
+      maximum: 100
+
+    Product:
+      type: object
+      properties:
+        name:
+          type: string
+          description: A product's resource name 
+          readOnly: true
+          example: products/62cc2fd1-ca0c-4f9a-809f-fa822a75800c
+        display_name:
+          type: string
+          description: Human-friendly name
+          minLength: 3
+          example: Coffee
+        price:
+          type: object
+          properties:
+            currency:
+              type: string
+              description: ISO 4217 currency code (Alpha-3)
+              enum:
+                - EUR
+                - UAH
+                - USD
+              example: EUR
+            value:
+              type: integer
+              description: Selling price in currency's commonly used smallest monetary unit  
+              minimum: 0
+              example: 1500
+          required:
+            - currency
+            - value
+        description:
+          type: string
+          example: Delicious
+      required:
+        - name
+        - display_name
+        - price
+
+  securitySchemes:
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: http://localhost:8080/realms/openapi/.well-known/openid-configuration
+
+paths:
+  /products:
+    get:
+      summary: List available products
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: List of available products divided into pages
+          headers:
+            X-Page-Num:
+              description: Page number
+              schema:
+                $ref: '#/components/schemas/PageNumber'
+              required: true
+            X-Page-Size:
+              description: Page size
+              schema:
+                $ref: '#/components/schemas/PageSize'
+              required: true
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      summary: Add a new product
+      security:
+        - oidc:
+          - write:products
+      requestBody:
+        $ref: '#/components/requestBodies/UpsertProduct'
+      responses:
+        '201':
+          description: Added new product
+          headers:
+            Location:
+              description: Path to the created product
+              schema:
+                type: string
+              required: true
+              example: products/62cc2fd1-ca0c-4f9a-809f-fa822a75800c
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized' 
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+
+    get:
+      summary: Retrieve detailed information about a product
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Replace a product
+      security:
+        - oidc:
+          - write:products
+      requestBody:
+        $ref: '#/components/requestBodies/UpsertProduct'
+      responses:
+        '201':
+          description: Replaced product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      summary: Make a product unavailable
+      security:
+        - oidc:
+          - delete:products
+      responses:
+        '204':
+          description: Made product unavailable 
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
